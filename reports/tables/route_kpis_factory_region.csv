@@ -1,0 +1,21 @@
+Route (Region),Factory,Shipments,Avg Lead Time,Median Lead Time,Lead Time Std,Delay Frequency %,Mode-Adjusted Delay,Avg Distance (km),Sales,Gross Profit,Efficiency Score,Rank
+The Other Factory → Gulf,The Other Factory,19,3.63,4.0,1.95,21.05,-0.05,740.42,262.5,26.5,100.0,1
+Secret Factory → Interior,Secret Factory,45,3.87,4.0,1.68,15.56,-0.16,677.04,1590.0,806.8,82.82,2
+Secret Factory → Pacific,Secret Factory,63,3.97,4.0,1.83,20.63,0.01,2319.13,3076.25,1558.05,75.4,3
+The Other Factory → Pacific,The Other Factory,32,4.0,4.0,1.73,21.88,-0.05,2594.59,386.25,61.25,73.08,4
+The Other Factory → Interior,The Other Factory,11,4.0,4.0,1.13,9.09,-0.5,781.45,126.75,9.75,73.08,5
+Sugar Shack → Interior,Sugar Shack,8,4.0,3.5,1.58,25.0,-0.19,1364.88,44.74,23.39,73.08,6
+The Other Factory → Atlantic,The Other Factory,38,4.13,4.0,1.88,23.68,-0.19,1453.68,506.75,54.75,63.46,7
+Lot's O' Nuts → Atlantic,Lot's O' Nuts,1661,4.21,4.0,1.81,23.12,-0.03,3258.13,22166.13,15315.63,57.94,8
+Secret Factory → Atlantic,Secret Factory,72,4.21,4.0,1.66,22.22,-0.05,1176.5,2991.25,1499.85,57.85,9
+Lot's O' Nuts → Pacific,Lot's O' Nuts,1813,4.24,4.0,1.85,25.26,0.0,987.73,24294.04,16788.44,55.79,10
+Wicked Choccy's → Atlantic,Wicked Choccy's,1197,4.28,4.0,1.79,23.31,-0.05,1188.35,15414.5,10039.66,52.81,11
+Lot's O' Nuts → Gulf,Lot's O' Nuts,897,4.28,4.0,1.81,24.3,-0.02,2680.51,12023.12,8313.42,52.3,12
+Wicked Choccy's → Gulf,Wicked Choccy's,663,4.33,5.0,1.79,25.94,-0.01,561.57,8993.25,5857.51,49.05,13
+Sugar Shack → Pacific,Sugar Shack,3,4.33,4.0,0.47,0.0,-0.4,2088.33,19.24,10.79,48.72,14
+Wicked Choccy's → Pacific,Wicked Choccy's,1342,4.35,4.5,1.82,25.56,0.04,3451.45,18525.75,12067.41,47.86,15
+Secret Factory → Gulf,Secret Factory,37,4.35,5.0,1.51,18.92,0.11,1150.14,930.0,480.0,47.4,16
+Lot's O' Nuts → Interior,Lot's O' Nuts,1321,4.36,4.0,1.71,24.45,-0.01,1834.1,17856.86,12353.56,47.08,17
+Wicked Choccy's → Interior,Wicked Choccy's,950,4.45,5.0,1.77,28.21,0.1,1434.3,12419.25,8088.99,40.08,18
+Sugar Shack → Gulf,Sugar Shack,4,4.75,5.0,1.09,25.0,-0.13,2334.0,38.39,23.24,18.27,19
+Sugar Shack → Atlantic,Sugar Shack,18,5.0,5.5,1.7,50.0,0.36,1767.94,118.61,63.81,0.0,20

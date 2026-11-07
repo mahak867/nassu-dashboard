@@ -1,0 +1,5 @@
+Region,Shipments,Avg Lead Time,Lead Time Std,Delay Frequency %,Mode-Adjusted Delay,Sales,Gross Profit,Avg Sales / Order Line
+Atlantic,2986,4.24,1.8,23.34,-0.03,41197.24,26973.7,13.8
+Gulf,1620,4.3,1.8,24.81,-0.01,22247.26,14700.67,13.73
+Interior,2335,4.38,1.73,25.74,0.03,32037.6,21282.49,13.72
+Pacific,3253,4.27,1.84,25.24,0.02,46301.53,30485.94,14.23

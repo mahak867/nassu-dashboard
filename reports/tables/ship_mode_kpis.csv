@@ -1,0 +1,5 @@
+Ship Mode,Shipments,Avg Lead Time,Lead Time Std,Delay Frequency %,Mode-Adjusted Delay,Sales,Gross Profit,Avg Sales / Order Line
+Same Day,547,0.38,0.53,0.0,-0.0,7113.67,4700.73,13.0
+First Class,1548,2.55,0.89,0.0,0.0,21319.39,14011.09,13.77
+Second Class,1979,3.57,1.28,7.48,0.0,27860.22,18306.52,14.08
+Standard Class,6120,5.32,1.13,38.77,-0.0,85490.35,56424.46,13.97
