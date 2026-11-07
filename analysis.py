@@ -245,3 +245,88 @@ if __name__ == "__main__":
     d, lg = clean_data()
     print(lg)
     print(route_kpis(d, "Route (Region)").to_string())
+
+
+# ---------------------------------------------------------------------------
+# What-if scenario simulation
+# ---------------------------------------------------------------------------
+MODES = ["Same Day", "First Class", "Second Class", "Standard Class"]
+
+
+def _dist(s: pd.Series, support: np.ndarray) -> np.ndarray:
+    """Empirical probability distribution of integer lead times over `support`."""
+    if len(s) == 0:
+        return np.zeros(len(support))
+    return s.value_counts(normalize=True).reindex(support, fill_value=0).to_numpy()
+
+
+def simulate_scenario(df: pd.DataFrame, threshold: float = 5, to_second: float = 0.0, to_first: float = 0.0,
+                      recover_2025: float = 0.0, premium_second: float = 0.0, premium_first: float = 0.0) -> dict:
+    """Expected KPIs if operations changed. Analytical (no random sampling), based on empirical distributions.
+
+    to_second / to_first : share (0-1) of Standard Class shipments upgraded to Second / First Class.
+                           An upgraded order takes on the empirical lead-time distribution of its new mode
+                           (same order year).
+    recover_2025         : share (0-1) of the 2025 slowdown recovered, i.e. 2025 shipments follow a mix of
+                           (1-r) x 2025 and r x 2024 lead-time distributions for the same mode.
+    premium_*            : assumed extra freight cost ($) per upgraded shipment (user assumption; the dataset
+                           has no freight cost).
+    """
+    if to_second + to_first > 1:
+        raise ValueError("to_second + to_first cannot exceed 1")
+    if df.empty:
+        raise ValueError("no shipments to simulate")
+    support = np.arange(0, int(df["Lead Time"].max()) + 1)
+    years = df["Order Date"].dt.year
+    y_min = years.min()
+
+    def mode_year_dist(mode, year):
+        cur = _dist(df.loc[(df["Ship Mode"] == mode) & (years == year), "Lead Time"], support)
+        if cur.sum() == 0:  # mode not seen this year: fall back to all years
+            cur = _dist(df.loc[df["Ship Mode"] == mode, "Lead Time"], support)
+        if recover_2025 > 0 and year == 2025 and y_min < 2025:
+            base = _dist(df.loc[(df["Ship Mode"] == mode) & (years == 2024), "Lead Time"], support)
+            if base.sum() > 0:
+                cur = (1 - recover_2025) * cur + recover_2025 * base
+        return cur
+
+    total = np.zeros(len(support))
+    per_mode = {m: np.zeros(len(support)) for m in MODES}
+    moved = {"Second Class": 0.0, "First Class": 0.0}
+    for (mode, year), g in df.groupby([df["Ship Mode"], years]):
+        n = len(g)
+        if mode == "Standard Class":
+            parts = {"Standard Class": n * (1 - to_second - to_first),
+                     "Second Class": n * to_second, "First Class": n * to_first}
+            moved["Second Class"] += n * to_second
+            moved["First Class"] += n * to_first
+        else:
+            parts = {mode: n}
+        for m, w in parts.items():
+            if w > 0:
+                contrib = w * mode_year_dist(m, year)
+                total += contrib
+                per_mode[m] += contrib
+
+    n_total = total.sum()
+    late = support > threshold
+    exp_avg = float((total * support).sum() / n_total)
+    exp_delay = float(total[late].sum() / n_total * 100)
+    base_avg = float(df["Lead Time"].mean())
+    base_delay = float((df["Lead Time"] > threshold).mean() * 100)
+    cost = moved["Second Class"] * premium_second + moved["First Class"] * premium_first
+    delays_avoided = (base_delay - exp_delay) / 100 * n_total
+    mode_rows = []
+    for m in MODES:
+        w = per_mode[m].sum()
+        if w > 0:
+            mode_rows.append({"Ship Mode": m, "Shipments": w, "Avg Lead Time": (per_mode[m] * support).sum() / w,
+                              "Delay Frequency %": per_mode[m][late].sum() / w * 100})
+    return {
+        "baseline_avg": base_avg, "scenario_avg": exp_avg,
+        "baseline_delay": base_delay, "scenario_delay": exp_delay,
+        "shipments": n_total, "upgraded": moved["Second Class"] + moved["First Class"],
+        "delays_avoided": delays_avoided, "days_saved": (base_avg - exp_avg) * n_total,
+        "added_cost": cost, "cost_per_delay_avoided": cost / delays_avoided if delays_avoided > 0 else np.nan,
+        "by_mode": pd.DataFrame(mode_rows), "distribution": pd.Series(total / n_total, index=support),
+    }

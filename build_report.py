@@ -18,7 +18,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 
-from analysis import bottlenecks, clean_data, group_kpis, route_kpis
+from analysis import bottlenecks, clean_data, group_kpis, route_kpis, simulate_scenario
 
 OUT = Path(__file__).parent / "reports"
 FIG = OUT / "figures"
@@ -121,6 +121,25 @@ mode_econ = df.groupby("Ship Mode").agg(gp_line=("Gross Profit", "mean"), sales_
 std_share = (df["Ship Mode"] == "Standard Class").mean() * 100
 std_delays_share = df.loc[df["Delayed"], "Ship Mode"].eq("Standard Class").mean() * 100
 choc_share = df["Factory"].isin(["Lot's O' Nuts", "Wicked Choccy's"]).mean() * 100
+
+# Scenario analysis (same engine as the dashboard's simulator)
+SCEN_P2, SCEN_P1 = 1.50, 3.00
+SCENARIOS = {
+    "Baseline": {},
+    "Upgrade 25% of Standard to Second": dict(to_second=0.25),
+    "Upgrade 25% of Standard to First": dict(to_first=0.25),
+    "Recover 2025 slowdown (100%)": dict(recover_2025=1.0),
+    "Recover 2025 + upgrade 25% to Second": dict(recover_2025=1.0, to_second=0.25),
+}
+scen = {k: simulate_scenario(df, THRESHOLD, premium_second=SCEN_P2, premium_first=SCEN_P1, **v)
+        for k, v in SCENARIOS.items()}
+scen_table = pd.DataFrame([{
+    "Scenario": k, "Avg lead time (d)": r["scenario_avg"], "Delay %": r["scenario_delay"],
+    "Late shipments avoided": max(r["delays_avoided"], 0), "Indicative added freight": r["added_cost"],
+    "Cost per late shipment avoided": "n/a" if np.isnan(r["cost_per_delay_avoided"])
+    else ("no added freight" if r["added_cost"] == 0 else f"${r['cost_per_delay_avoided']:.2f}")}
+    for k, r in scen.items()])
+scen_table.to_csv(TAB / "scenario_analysis.csv", index=False)
 
 # Save tables
 routes_state_all.to_csv(TAB / "route_kpis_factory_state.csv", index=False)
@@ -509,6 +528,21 @@ d.paragraphs[-1].add_run(
     f"{std_m['Avg Lead Time'] - fc_m['Avg Lead Time']:.1f} days and removes almost all delay risk. "
     f"The case for upgrading therefore depends on carrier rates, which should be added to the data.")
 
+d.add_heading("8.1 Scenario analysis: quantifying the levers", 2)
+para(d, "The dashboard's Scenario Simulator estimates expected KPIs under operational changes. It is analytical, "
+        "using the observed lead-time distribution of each ship mode and year, and reproduces current KPIs exactly "
+        "when no change is applied. Upgraded Standard Class orders take on their new mode's distribution; "
+        "'recovering' the 2025 slowdown blends 2025 distributions toward 2024's for the same mode. Freight premiums "
+        f"are illustrative assumptions (${SCEN_P2:.2f} per Second Class and ${SCEN_P1:.2f} per First Class upgrade), "
+        "since the dataset has no freight cost.")
+table(d, scen_table, {"Avg lead time (d)": "{:.2f}", "Delay %": "{:.1f}%", "Late shipments avoided": "{:,.0f}",
+                      "Indicative added freight": "${:,.0f}", "Cost per late shipment avoided": "{}"})
+para(d, f"Recovering the 2025 dispatch slowdown is the strongest single lever with no freight premium: it cuts "
+        f"the delay rate from {scen['Baseline']['scenario_delay']:.1f}% to "
+        f"{scen['Recover 2025 slowdown (100%)']['scenario_delay']:.1f}%. Selective upgrades are cheap per late "
+        f"shipment avoided, but they treat the symptom. Combining process recovery with a modest upgrade of "
+        f"Standard Class orders gives the largest improvement.")
+
 d.add_heading("9. Key Insights", 1)
 bullets(d, [
     ("Data integrity: ", "ship dates carry a systematic year offset. Raw lead times are unusable until this "
@@ -623,10 +657,14 @@ bullets(e, [
 ], style="List Number")
 
 e.add_heading("Expected benefit", 1)
-para(e, f"Halving Standard Class delays alone would cut the overall late-shipment rate by about "
-        f"{std_delays_share * overall['delay'] / 200:.0f} percentage points. Reversing the 2025 slowdown would restore "
-        f"roughly {yoy:.1f} days of lead time on every order. The interactive dashboard delivered with this "
-        f"review lets managers track these measures continuously.")
+para(e, "Modelled with the dashboard's scenario simulator on the full 2024–2025 shipment base:")
+table(e, scen_table[["Scenario", "Avg lead time (d)", "Delay %", "Late shipments avoided"]],
+      {"Avg lead time (d)": "{:.2f}", "Delay %": "{:.1f}%", "Late shipments avoided": "{:,.0f}"})
+para(e, f"Restoring 2024 dispatch performance alone would avoid about "
+        f"{scen['Recover 2025 slowdown (100%)']['delays_avoided']:,.0f} late shipments over the period at no extra "
+        f"freight cost. Combined with upgrading a quarter of Standard Class orders, the late-shipment rate falls "
+        f"to about {scen['Recover 2025 + upgrade 25% to Second']['scenario_delay']:.0f}%. The interactive dashboard "
+        f"delivered with this review lets managers test these levers and track results continuously.")
 e.save(OUT / "Nassau_Candy_Executive_Summary.docx")
 
 print("Done.")

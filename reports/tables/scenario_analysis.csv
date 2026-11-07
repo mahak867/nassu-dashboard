@@ -1,0 +1,6 @@
+Scenario,Avg lead time (d),Delay %,Late shipments avoided,Indicative added freight,Cost per late shipment avoided
+Baseline,4.292328820875024,24.73023347066902,0.0,0.0,n/a
+Upgrade 25% of Standard to Second,4.029891122955643,20.013565194189553,480.8171641043169,2295.0,$4.77
+Upgrade 25% of Standard to First,3.8741187582738585,18.910633706101628,593.25,4590.0,$7.74
+Recover 2025 slowdown (100%),4.008470062783117,17.608745261150187,725.96450807835,0.0,no added freight
+Recover 2025 + upgrade 25% to Second,3.7559900413441936,13.377573972669765,1157.290109226044,2295.0,$1.98

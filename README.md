@@ -1,20 +1,24 @@
 # Nassau Candy · Shipping Route Efficiency Dashboard
 
 **Factory-to-customer route analytics for a national confectionery distributor.**
-An end-to-end analysis plus a Streamlit dashboard. It turns 10,194 order lines into route-level views of lead time, delay frequency, geographic bottlenecks and ship-mode trade-offs.
+An end-to-end analysis plus a Streamlit dashboard. It turns 10,194 order lines into route-level views of lead time, delay frequency, geographic bottlenecks and ship-mode trade-offs, and includes a **scenario simulator** that puts numbers on each improvement lever.
 
+[![tests](https://github.com/mahak867/nassu-dashboard/actions/workflows/tests.yml/badge.svg)](https://github.com/mahak867/nassu-dashboard/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-2a78d6)
 ![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-eb6834)
 ![Plotly](https://img.shields.io/badge/Plotly-interactive-1baf7a)
-![Status](https://img.shields.io/badge/status-complete-008300)
+![Tests](https://img.shields.io/badge/tests-13%20passing-008300)
 
-![Route Efficiency Overview](docs/screenshots/01_overview.png)
+**📄 [Research paper (PDF)](reports/Nassau_Candy_Route_Efficiency_Research_Paper.pdf) · 📋 [Executive summary (PDF)](reports/Nassau_Candy_Executive_Summary.pdf) · 📊 [Dashboard tour](#dashboard-tour) · 🧪 [Scenario results](#scenario-analysis)**
+
+![Executive Insights](docs/screenshots/00_executive_insights.png)
 
 ---
 
 ## Contents
 - [Business problem](#business-problem)
 - [Key findings](#key-findings)
+- [Scenario analysis](#scenario-analysis)
 - [Dashboard tour](#dashboard-tour)
 - [Methodology](#methodology)
 - [KPIs](#kpis)
@@ -47,14 +51,38 @@ Nassau Candy ships products from **five factories** to customers across the US a
 
 **Top recommendations:** fix ship-date capture at source · audit dispatch capacity at the two chocolate factories (96% of volume) before the September and holiday peaks · commit to a ≤ 5-day Standard Class SLA · work with carriers in the bottleneck states · start capturing freight cost and delivery dates.
 
+## Scenario analysis
+
+The recommendations are quantified with the dashboard's **Scenario Simulator**. It computes expected values from the observed lead-time distributions of each ship mode and year, and reproduces current KPIs exactly when nothing changes. Freight premiums are illustrative assumptions ($1.50 per Second Class, $3.00 per First Class upgrade), since the data has no freight cost.
+
+| Scenario | Avg lead time | Late shipments (> 5 d) | Late shipments avoided | Indicative added freight |
+|---|---|---|---|---|
+| Baseline | 4.29 d | 24.7% | – | – |
+| Upgrade 25% of Standard → Second | 4.03 d | 20.0% | 481 | $2,295 |
+| Upgrade 25% of Standard → First | 3.87 d | 18.9% | 593 | $4,590 |
+| **Recover 2025 dispatch slowdown** | 4.01 d | 17.6% | 726 | **$0** |
+| **Recover 2025 + upgrade 25% → Second** | **3.76 d** | **13.4%** | **1,157** | $2,295 |
+
+**Takeaway:** fixing dispatch is the biggest single lever and adds no freight cost. Combined with a modest upgrade of Standard Class orders, it **roughly halves late shipments**.
+
 ---
 
 ## Dashboard tour
 
-The sidebar filters every view: **order date range, region, state, ship mode, factory, delay-threshold slider, minimum shipments per route, and route definition** (Factory → State or Factory → Region).
+The sidebar filters every view: **order date range, region, state, ship mode, factory, delay-threshold slider, minimum shipments per route, and route definition** (Factory → State or Factory → Region). All seven modules recalculate for the current selection.
+
+### 0 · Executive Insights
+Headline KPIs with year-over-year change, plain-language findings that regenerate (with statistical tests) whenever the filters change, and recommended actions. Shown at the top of this README.
+
+### Scenario Simulator
+Move sliders to upgrade a share of Standard Class orders or recover the 2025 slowdown, then see the projected lead time, delay rate, late shipments avoided and indicative freight cost.
+
+![Scenario simulator](docs/screenshots/12_scenario_simulator.png)
 
 ### 1 · Route Efficiency Overview
 KPI cards, the top/bottom 10 route leaderboards with efficiency scores, average lead time for every route, and monthly trends.
+
+![Route Efficiency Overview](docs/screenshots/01_overview.png)
 
 ![Average lead time by route](docs/screenshots/02_route_lead_time.png)
 ![Monthly trend](docs/screenshots/03_monthly_trend.png)
@@ -122,38 +150,50 @@ streamlit run app.py
 
 The dashboard opens at `http://localhost:8501`.
 
-To regenerate the research paper, executive summary, figures and KPI tables:
+To regenerate the research paper, executive summary, figures and KPI tables, and to run the tests:
 
 ```bash
-pip install python-docx matplotlib
+pip install -r requirements-dev.txt
 python build_report.py
+pytest -q
 ```
+
+The 13 tests cover the cleaning rules, the lead-time correction, KPI definitions and the scenario simulator, plus a headless run of the whole dashboard (Streamlit `AppTest`). GitHub Actions runs them on every push.
+
+### Deploy (free, about 2 minutes)
+1. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub.
+2. **Create app** → repository `mahak867/nassu-dashboard`, branch `main`, main file `app.py`.
+3. **Deploy.** The app installs `requirements.txt` and goes live at a public `*.streamlit.app` URL.
 
 ## Project structure
 
 ```
-├── app.py                 # Streamlit dashboard (5 modules)
-├── analysis.py            # Cleaning, lead-time correction, feature engineering, KPI functions
-├── build_report.py        # Generates paper, executive summary, figures and tables from the data
+├── app.py                  # Streamlit dashboard (7 modules)
+├── analysis.py             # Cleaning, lead-time correction, features, KPIs, scenario simulator
+├── build_report.py         # Generates paper, executive summary, figures and tables from the data
+├── tests/test_analysis.py  # Pipeline, KPI, simulator and dashboard tests
 ├── data/
-│   └── nassau_candy.csv   # Source order data
+│   └── nassau_candy.csv    # Source order data
 ├── reports/
-│   ├── Nassau_Candy_Route_Efficiency_Research_Paper.docx
-│   ├── Nassau_Candy_Executive_Summary.docx
-│   ├── figures/           # Static charts used in the paper
-│   └── tables/            # Route, state, region, ship-mode KPIs; bottlenecks; cleaned dataset
-├── docs/screenshots/      # Dashboard screenshots
-├── .streamlit/config.toml # Theme
-└── requirements.txt
+│   ├── Nassau_Candy_Route_Efficiency_Research_Paper.(pdf|docx)
+│   ├── Nassau_Candy_Executive_Summary.(pdf|docx)
+│   ├── figures/            # Static charts used in the paper
+│   └── tables/             # Route/state/region/mode KPIs, bottlenecks, scenarios, cleaned dataset
+├── docs/screenshots/       # Dashboard screenshots
+├── .github/workflows/      # CI: tests on every push
+├── .streamlit/config.toml  # Theme
+├── requirements.txt        # Dashboard runtime
+└── requirements-dev.txt    # + report generation and tests
 ```
 
 ## Deliverables
 
 | Deliverable | Location |
 |---|---|
-| Research paper (EDA, insights, recommendations) | [`reports/Nassau_Candy_Route_Efficiency_Research_Paper.docx`](reports/Nassau_Candy_Route_Efficiency_Research_Paper.docx) |
-| Executive summary for government stakeholders | [`reports/Nassau_Candy_Executive_Summary.docx`](reports/Nassau_Candy_Executive_Summary.docx) |
+| Research paper (EDA, insights, recommendations) | [PDF](reports/Nassau_Candy_Route_Efficiency_Research_Paper.pdf) · [DOCX](reports/Nassau_Candy_Route_Efficiency_Research_Paper.docx) |
+| Executive summary for government stakeholders | [PDF](reports/Nassau_Candy_Executive_Summary.pdf) · [DOCX](reports/Nassau_Candy_Executive_Summary.docx) |
 | Streamlit dashboard (live analytics) | [`app.py`](app.py) |
+| Scenario analysis | [`reports/tables/scenario_analysis.csv`](reports/tables/scenario_analysis.csv) |
 | KPI tables (CSV) | [`reports/tables/`](reports/tables) |
 
 ## Limitations

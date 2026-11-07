@@ -8,7 +8,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from analysis import (FACTORIES, bottlenecks, clean_data, group_kpis, route_kpis)
+from scipy import stats
+
+from analysis import (FACTORIES, bottlenecks, clean_data, group_kpis, route_kpis, simulate_scenario)
 
 st.set_page_config(page_title="Nassau Candy · Route Efficiency", page_icon="🚚", layout="wide")
 
@@ -108,9 +110,90 @@ if df.empty:
 
 routes = route_kpis(df, route_col, threshold, min_ship)
 
-tab_over, tab_map, tab_mode, tab_drill, tab_dq = st.tabs(
-    ["Route Efficiency Overview", "Geographic Shipping Map", "Ship Mode Comparison",
-     "Route Drill-Down", "Data Quality & Method"])
+tab_exec, tab_over, tab_map, tab_mode, tab_sim, tab_drill, tab_dq = st.tabs(
+    ["Executive Insights", "Route Efficiency Overview", "Geographic Shipping Map", "Ship Mode Comparison",
+     "Scenario Simulator", "Route Drill-Down", "Data Quality & Method"])
+
+# ===========================================================================
+# 0. Executive insights (every number recomputed from the current filters)
+# ===========================================================================
+with tab_exec:
+    yrs = df["Order Date"].dt.year
+    has_yoy = {2024, 2025}.issubset(set(yrs.unique()))
+    lt_y = df.groupby(yrs)["Lead Time"].mean()
+    dl_y = df.groupby(yrs)["Delayed"].mean() * 100
+    bn_e = bottlenecks(df, "State/Province", threshold)
+    bn_e = bn_e[bn_e["Bottleneck"]]
+    mk_e = group_kpis(df, "Ship Mode", threshold).set_index("Ship Mode")
+    late_share = df.loc[df["Delayed"], "Ship Mode"].value_counts(normalize=True) * 100
+
+    c = st.columns(4)
+    c[0].metric("Avg lead time", f"{df['Lead Time'].mean():.2f} d",
+                f"{lt_y[2025] - lt_y[2024]:+.2f} d vs 2024" if has_yoy else None, delta_color="inverse")
+    c[1].metric(f"Shipments > {threshold} days", f"{df['Delayed'].mean() * 100:.1f}%",
+                f"{dl_y[2025] - dl_y[2024]:+.1f} pp vs 2024" if has_yoy else None, delta_color="inverse")
+    c[2].metric("Top bottleneck state", bn_e.iloc[0]["State/Province"] if len(bn_e) else "None",
+                help="Highest Bottleneck Index: share of volume × delay rate")
+    if len(routes):
+        worst = routes.iloc[-1]
+        c[3].metric(f"Slowest route · from {worst['Factory']}", worst[route_col].split(" → ")[-1],
+                    help=f"{worst[route_col]}: {worst['Avg Lead Time']:.2f} d average, "
+                         f"{worst['Delay Frequency %']:.0f}% delayed ({worst['Shipments']} shipments)")
+    else:
+        c[3].metric("Slowest route", "n/a")
+
+    left, right = st.columns([3, 2])
+    with left:
+        st.subheader("What the data says")
+        ins = []
+        if len(mk_e) > 1:
+            f_, s_ = mk_e["Avg Lead Time"].idxmin(), mk_e["Avg Lead Time"].idxmax()
+            ins.append(f"**Service level drives speed.** {f_} averages {mk_e.loc[f_, 'Avg Lead Time']:.2f} d "
+                       f"vs {s_} {mk_e.loc[s_, 'Avg Lead Time']:.2f} d, a "
+                       f"{mk_e.loc[s_, 'Avg Lead Time'] - mk_e.loc[f_, 'Avg Lead Time']:.1f}-day gap.")
+        if has_yoy:
+            ins.append(f"**Performance slipped in 2025.** Average lead time {lt_y[2024]:.2f} → {lt_y[2025]:.2f} d; "
+                       f"late shipments {dl_y[2024]:.1f}% → {dl_y[2025]:.1f}%.")
+        if "Standard Class" in late_share.index:
+            ins.append(f"**Standard Class produces {late_share['Standard Class']:.0f}% of late shipments** while "
+                       f"carrying {(df['Ship Mode'] == 'Standard Class').mean() * 100:.0f}% of volume.")
+        if len(df) > 50 and df["Distance (km)"].nunique() > 1:
+            rho = stats.spearmanr(df["Distance (km)"], df["Lead Time"]).statistic
+            ins.append(f"**Distance is not the constraint.** Distance vs lead time Spearman ρ = {rho:.2f}: "
+                       f"delays come from processing and service level, not miles.")
+        if df["Region"].nunique() > 1:
+            p = stats.kruskal(*[g["Mode-Adjusted Delay"] for _, g in df.groupby("Region")]).pvalue
+            ins.append(f"**Regions {'perform alike' if p >= 0.05 else 'differ'} once ship mode is controlled** "
+                       f"(Kruskal-Wallis p = {p:.2f}).")
+        if len(bn_e):
+            ins.append("**Congestion-prone states:** " + ", ".join(bn_e["State/Province"].head(5)) +
+                       ": high volume and above-median delay.")
+        if len(routes) > 1:
+            ins.append(f"**Route spread:** fastest {routes.iloc[0][route_col]} ({routes.iloc[0]['Avg Lead Time']:.2f} d) "
+                       f"vs slowest {routes.iloc[-1][route_col]} ({routes.iloc[-1]['Avg Lead Time']:.2f} d).")
+        st.markdown("\n".join(f"- {i}" for i in ins))
+    with right:
+        st.subheader("Recommended actions")
+        st.markdown(f"""
+1. **Fix ship-date capture** at source (year offset found in the raw data).
+2. **Audit dispatch capacity** at Lot's O' Nuts and Wicked Choccy's ahead of the Sep and Nov–Dec peaks.
+3. **Commit to a ≤ {threshold}-day Standard Class SLA** and track delay frequency weekly.
+4. **Carrier and cut-off review** in the bottleneck states.
+5. **Capture freight cost and delivery date** for true cost-to-serve analysis.
+
+Test the impact of these levers in the **Scenario Simulator** tab.""")
+
+    if has_yoy:
+        ym = df.groupby([yrs.rename("Year"), "Ship Mode"])["Lead Time"].mean().reset_index()
+        ym["Year"] = ym["Year"].astype(str)
+        f = px.bar(ym, x="Ship Mode", y="Lead Time", color="Year", barmode="group", text="Lead Time",
+                   category_orders={"Ship Mode": MODE_ORDER},
+                   color_discrete_map={"2024": "#9ec5f4", "2025": SERIES[0]},
+                   title="Average lead time by ship mode: 2024 vs 2025")
+        f.update_traces(texttemplate="%{text:.2f}", textposition="outside", marker_line_color=SURFACE,
+                        marker_line_width=2)
+        f.update_layout(xaxis_title="", yaxis_title="Days", yaxis_range=[0, ym["Lead Time"].max() * 1.18])
+        st.plotly_chart(style(f, 380), use_container_width=True, config=CFG)
 
 # ===========================================================================
 # 1. Overview
@@ -379,6 +462,64 @@ with tab_mode:
     st.plotly_chart(style(f, 300, False), use_container_width=True, config=CFG)
 
 # ===========================================================================
+# 3b. Scenario simulator
+# ===========================================================================
+with tab_sim:
+    st.markdown("Estimate the effect of operational changes on the **shipments currently in view**. Results are "
+                "expected values computed from the observed lead-time distributions of each ship mode and year "
+                "(no random sampling). Freight premiums are your assumptions: the dataset has no freight cost.")
+    a, b, c_ = st.columns(3)
+    to_second = a.slider("Upgrade Standard → Second Class (%)", 0, 100, 0, 5) / 100
+    to_first = b.slider("Upgrade Standard → First Class (%)", 0, 100, 0, 5) / 100
+    if to_second + to_first > 1:
+        to_first = 1 - to_second
+        b.caption(f"Capped at {to_first * 100:.0f}% so total upgrades ≤ 100%.")
+    recover = c_.slider("Recover the 2025 dispatch slowdown (%)", 0, 100, 0, 10,
+                        help="100% = 2025 shipments perform like 2024 shipments of the same mode.") / 100
+    a, b, _ = st.columns(3)
+    prem2 = a.number_input("Assumed premium per Second Class upgrade ($)", 0.0, 100.0, 1.50, 0.25)
+    prem1 = b.number_input("Assumed premium per First Class upgrade ($)", 0.0, 100.0, 3.00, 0.25)
+
+    r = simulate_scenario(df, threshold, to_second, to_first, recover, prem2, prem1)
+    c = st.columns(5)
+    c[0].metric("Avg lead time", f"{r['scenario_avg']:.2f} d", f"{r['scenario_avg'] - r['baseline_avg']:+.2f} d",
+                delta_color="inverse")
+    c[1].metric("Delay frequency", f"{r['scenario_delay']:.1f}%",
+                f"{r['scenario_delay'] - r['baseline_delay']:+.1f} pp", delta_color="inverse")
+    c[2].metric("Late shipments avoided", f"{max(r['delays_avoided'], 0):,.0f}")
+    c[3].metric("Indicative added freight", f"${r['added_cost']:,.0f}", f"{r['upgraded']:,.0f} upgrades",
+                delta_color="off")
+    c[4].metric("Cost per delay avoided",
+                "n/a" if np.isnan(r["cost_per_delay_avoided"]) else f"${r['cost_per_delay_avoided']:,.2f}")
+
+    l, rr = st.columns(2)
+    base_m = group_kpis(df, "Ship Mode", threshold)[["Ship Mode", "Delay Frequency %"]].assign(Case="Current")
+    scen_m = r["by_mode"][["Ship Mode", "Delay Frequency %"]].assign(Case="Scenario")
+    f = px.bar(pd.concat([base_m, scen_m]), x="Ship Mode", y="Delay Frequency %", color="Case", barmode="group",
+               category_orders={"Ship Mode": MODE_ORDER},
+               color_discrete_map={"Current": "#9ec5f4", "Scenario": SERIES[0]},
+               title=f"Delay frequency by ship mode (> {threshold} d)")
+    f.update_traces(marker_line_color=SURFACE, marker_line_width=2)
+    f.update_layout(xaxis_title="", yaxis_title="%")
+    l.plotly_chart(style(f, 380), use_container_width=True, config=CFG)
+
+    support = r["distribution"].index
+    cur = df["Lead Time"].value_counts(normalize=True).reindex(support, fill_value=0)
+    dd = pd.DataFrame({"Lead Time": list(support) * 2,
+                       "Share %": list(cur.values * 100) + list(r["distribution"].values * 100),
+                       "Case": ["Current"] * len(support) + ["Scenario"] * len(support)})
+    f = px.bar(dd, x="Lead Time", y="Share %", color="Case", barmode="group",
+               color_discrete_map={"Current": "#9ec5f4", "Scenario": SERIES[0]}, title="Lead-time distribution")
+    f.add_vline(x=threshold + 0.5, line_dash="dot", line_color=CRITICAL)
+    f.update_traces(marker_line_color=SURFACE, marker_line_width=1)
+    f.update_layout(xaxis_title="Lead time (days)", yaxis_title="% of shipments", xaxis_dtick=1)
+    rr.plotly_chart(style(f, 380), use_container_width=True, config=CFG)
+
+    st.caption("Method: each upgraded Standard Class order takes on the observed lead-time distribution of its new "
+               "mode in the same year; 'recover' blends 2025 distributions toward 2024's for the same mode. With all "
+               "sliders at zero the simulator reproduces the current KPIs exactly.")
+
+# ===========================================================================
 # 4. Drill-down
 # ===========================================================================
 with tab_drill:
@@ -419,8 +560,9 @@ with tab_drill:
         if len(rd) > 10 else len(rd)
     tl = rd.tail(n_orders).copy()
     tl["Status"] = np.where(tl["Delayed"], f"Delayed (> {threshold} d)", "On time")
-    tl["Bar End"] = tl["Effective Ship Date"] + pd.Timedelta(hours=12)  # keeps same-day orders visible
-    tl["Label"] = tl["Order Date"].dt.strftime("%d %b %y") + " · " + tl["Ship Mode"].str.replace(" Class", "")         + " · #" + tl["Row ID"].astype(str)
+    tl["Bar End"] = (tl["Effective Ship Date"] + np.timedelta64(12, "h")).astype("datetime64[ns]")  # same-day visible
+    tl["Label"] = (tl["Order Date"].dt.strftime("%d %b %y") + " · " + tl["Ship Mode"].str.replace(" Class", "")
+                   + " · #" + tl["Row ID"].astype(str))
     f = px.timeline(tl, x_start="Order Date", x_end="Bar End", y="Label", color="Status",
                     color_discrete_map={"On time": GOOD, f"Delayed (> {threshold} d)": CRITICAL},
                     hover_data={"Ship Mode": True, "Lead Time": True, "City": True, "Product Name": True,
